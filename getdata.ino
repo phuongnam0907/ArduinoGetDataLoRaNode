@@ -26,7 +26,7 @@ const float voltageRef = 5.000; //Set reference voltage,you need test your IOREF
 //const float voltageRef = 3.300; 
 int HighTemperaturePin = A1;  //Setting pin
 DFRobotHighTemperature PT100 = DFRobotHighTemperature(voltageRef); //Define an PT100 object
-
+int tempTotal = 25;
 //============== liquid level sensor ============
 #define SensorLiquidLevelPin A2
 int Liquid_level=0;
@@ -92,6 +92,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   //Serial.println(getdata());
   getdata();
+  showup();
   delay(1000);
 }
 
@@ -104,6 +105,7 @@ void init_start(){
   init_temp();
   init_liq();
   init_oxy();
+  init_solids();
 }
 
 //================= pH sensor ===================
@@ -133,25 +135,27 @@ void init_solids(){
                 FUNCTION GET DATA
 ****************************************************/
 void getdata(){
-
-  float pHvalue;
-  int tempvalue;
-  int liqvalue;
-
-  getdata_ph();
-  getdata_temp();
-  getdata_liq();
-  getdata_oxy();
-  getdata_solids();
-
   //Create data of sensor then import into array dataSensor
   dataSensor[0] = 0xFF;   //Which port of analog sensor doesn't work, 1111 1111 is all working
   dataSensor[13] = 0x00;  //Number of analog sensor is not working
   dataSensor[14] = 0;     //Or '\0' is the end of data sensor
+  for (int i = 1; i < 13; ++i)
+  {
+    dataSensor[i] = 0;
+  }
+  
+  getdata_ph();
+  getdata_temp();
+//  getdata_liq();
+  getdata_oxy();
+  getdata_solids();
+
 }
 
 //================= pH sensor ===================
 void getdata_ph(){
+  dataSensor[2] = 0;
+  dataSensor[1] = 0;
   static unsigned long samplingTime = millis();
   static unsigned long printTime = millis();
   static float pHValue,voltage;
@@ -163,32 +167,50 @@ void getdata_ph(){
     pHValue = 3.5*voltage+Offset;
     samplingTime=millis();
   }
-  if(millis() - printTime > printInterval)   //Every 800 milliseconds, print a numerical, convert the state of the LED indicator
-  {
-    Serial.print("Voltage:");
-    Serial.print(voltage,2);
-    Serial.print("    pH value: ");
-    Serial.println(pHValue,2);
-    printTime=millis();
-  }
+
+  Serial.print("Voltage: ");
+  Serial.print(voltage,2);
+  Serial.print("    pH value: ");
+  Serial.println(pHValue,2);
+  int TphValue = round(pHValue*100); //Delta = 0.01
+  dataSensor[2] = TphValue%100;
+  dataSensor[1] = TphValue/100;
+
 }
 //=========== high temperature sensor ===========
 void getdata_temp(){
   int temperature = PT100.readTemperature(HighTemperaturePin);  //Get temperature
-  Serial.print("temperature:  ");
-  Serial.print(temperature);
-  Serial.println("  ^C");
-  delay(1000); //just here to slow down the output so it is easier to read
+  tempTotal = temperature;
+  if (temperature > 150){
+    Serial.println("** Temperature Sensor Error. Cannot use!");
+    dataSensor[4] = 0xFA;
+    dataSensor[3] = 0xFA;
+  } else {
+    Serial.print("Temperature: ");
+    Serial.print(temperature);
+    Serial.println(" ^C");
+    delay(1000); //just here to slow down the output so it is easier to read
+    dataSensor[4] = temperature%100;
+    dataSensor[3] = temperature/100;
+  }
 }
 //============== liquid level sensor ============
 void getdata_liq(){
   Liquid_level=digitalRead(5);
-  Serial.print("Liquid_level= ");
+  Serial.print("Liquid_level = ");
   Serial.println(Liquid_level,DEC);
-  delay(500);
+  delay(1000);
+  int Tliq = Liquid_level*100;
+  dataSensor[6] = Tliq%100;
+  dataSensor[5] = Tliq/100;
 }
 //================= oxygen sensor ===============
 void getdata_oxy(){
+  temperatureDO = tempTotal;   
+  if (temperatureDO > 149) {
+    Serial.println("** Error temperature. Use default 25.C!"); //use default degree = 25
+    temperatureDO = 25;
+  }
   static unsigned long analogSampleTimepoint = millis();
   if(millis()-analogSampleTimepoint > 30U)     //every 30 milliseconds,read the analog value from the ADC
   {
@@ -224,19 +246,39 @@ void getdata_oxy(){
     Serial.println(F("mg/L"));
   }
   
-  if(serialDataAvailable() > 0)
-  {
-    byte modeIndex = uartParse();  //parse the uart command received
-    doCalibration(modeIndex);    // If the correct calibration command is received, the calibration function should be called.
-  }
+//  if(serialDataAvailable() > 0)
+//  {
+//    byte modeIndex = uartParse();  //parse the uart command received
+//    doCalibration(modeIndex);    // If the correct calibration command is received, the calibration function should be called.
+//  }
 }
 //================= solids sensor ===============
-void getdata_solids(){
-  gravityTds.setTemperature(temperatureTDS);  // set the temperature and execute temperature compensation
-  gravityTds.update();  //sample and calculate 
-  tdsValue = gravityTds.getTdsValue();  // then get the value
-  Serial.print(tdsValue,0);
-  Serial.println("ppm");
+void getdata_solids(){      
+  temperatureTDS = tempTotal;   
+  if (temperatureTDS > 149) {
+    Serial.println("** Error temperature. Use default 25.C!"); //use default degree = 25
+    temperatureTDS = 25;
+    dataSensor[10] = 0xFA;
+    dataSensor[9] = 0xFA;
+    return;
+  }
+  if (temperatureTDS > 55){
+    Serial.println("Temperature higher 55^C. Cannot use!");
+    dataSensor[10] = 0xFA;
+    dataSensor[9] = 0xFA;
+  } else {
+    gravityTds.setTemperature(temperatureTDS);  // set the temperature and execute temperature compensation
+    gravityTds.update();  //sample and calculate 
+    tdsValue = gravityTds.getTdsValue();  // then get the value
+    Serial.print("Temperature: ");
+    Serial.print(temperatureTDS);
+    Serial.print(" - TDS: ");
+    Serial.print(tdsValue,0);
+    Serial.println("ppm");
+    int Ttds = round(tdsValue*1);
+    dataSensor[10] = Ttds%100;
+    dataSensor[9] = Ttds/100;
+  }
   delay(1000);
 }
 /***************************************************
@@ -413,4 +455,21 @@ void readDoCharacteristicValues(void)
       SaturationDoTemperature = 25.0;   //default temperature is 25^C
       EEPROM_write(SaturationDoTemperatureAddress, SaturationDoTemperature);
     }    
+}
+//===============================================//
+void showup(){
+  Serial.println("============ DATA SET ==============");
+  Serial.print("DEC: ");
+  for (int i = 0; i < 15; ++i)
+  {
+    Serial.print(dataSensor[i],DEC);
+    Serial.print(" ");
+  }
+  Serial.print("\nHEX: ");
+  for (int i = 0; i < 15; ++i)
+  {
+    Serial.print(dataSensor[i],HEX);
+    Serial.print(" ");
+  }
+  Serial.println("\n");
 }
