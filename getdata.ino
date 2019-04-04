@@ -143,12 +143,45 @@ void getdata(){
   {
     dataSensor[i] = 0;
   }
-  
-  getdata_ph();
-  getdata_temp();
-//  getdata_liq();
-  getdata_oxy();
-  getdata_solids();
+
+  if (checkPin(SensorPin) == true) getdata_ph();
+  else {
+    dataSensor[1] = 0xFA;
+    dataSensor[2] = 0xFA;
+  }
+
+  if (checkPin(SensorTemperaturePin) == true) getdata_temp();
+  else {
+    dataSensor[3] = 0xFA;
+    dataSensor[4] = 0xFA;
+  }
+
+  getdata_liq();
+
+  // if (checkPin(SensorLiquidLevelPin) == true) getdata_liq();
+  // else {
+  //   dataSensor[5] = 0xFA;
+  //   dataSensor[6] = 0xFA;
+  // }
+
+  if (checkPin(DoSensorPin) == true) getdata_oxy();
+  else {
+    dataSensor[7] = 0xFA;
+    dataSensor[8] = 0xFA;
+  }
+
+  if (checkPin(TdsSensorPin) == true) getdata_solids();
+  else {
+    dataSensor[9] = 0xFA;
+    dataSensor[10] = 0xFA;
+  }
+
+  // if (checkPin(A5) == true) getdata_A5();
+  // else {
+    dataSensor[11] = 0xFA;
+    dataSensor[12] = 0xFA;
+  // }
+
 
 }
 
@@ -225,7 +258,7 @@ void getdata_oxy(){
   if(millis()-tempSampleTimepoint > 500U)  // every 500 milliseconds, read the temperature
   {
     tempSampleTimepoint = millis();
-    //temperature = readTemperature();  // add your temperature codes here to read the temperature, unit:^C
+    //temperatureDO = readTemperature();  // add your temperature codes here to read the temperature, unit:^C
   }
   
   static unsigned long printTimepoint = millis();
@@ -244,6 +277,9 @@ void getdata_oxy(){
     Serial.print(F(",  DO Value:"));
     Serial.print(doValue,2);
     Serial.println(F("mg/L"));
+    int TdoValue = round(doValue*100);
+    dataSensor[8] = TdoValue%100;
+    dataSensor[7] = TdoValue/100;
   }
   
 //  if(serialDataAvailable() > 0)
@@ -258,9 +294,9 @@ void getdata_solids(){
   if (temperatureTDS > 149) {
     Serial.println("** Error temperature. Use default 25.C!"); //use default degree = 25
     temperatureTDS = 25;
-    dataSensor[10] = 0xFA;
-    dataSensor[9] = 0xFA;
-    return;
+//    dataSensor[10] = 0xFA;
+//    dataSensor[9] = 0xFA;
+//    return;
   }
   if (temperatureTDS > 55){
     Serial.println("Temperature higher 55^C. Cannot use!");
@@ -472,4 +508,13 @@ void showup(){
     Serial.print(" ");
   }
   Serial.println("\n");
+}
+//===============================================//
+boolean checkPin(int pinCk){
+  int checkSum = 0;
+  float chk = 0;
+  for (int h = 0; h<50; h++) checkSum += analogRead(pinCk);
+  chk = (float)checkSum/50;
+  if (chk > 30) return true;
+  else return false;
 }
