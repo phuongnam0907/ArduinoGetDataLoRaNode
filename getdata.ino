@@ -1,12 +1,12 @@
 /***************************************************
 INCLUDE LIBRARIES AND DEFINE VARIABLES IN EACH FUNCTION
 ****************************************************/
-//  SW1 - A0: pH Sensor                   https://www.dfrobot.com/wiki/index.php/PH_meter(SKU:_SEN0161)
-//  SW2 - A1: High Temperature Sensor     https://www.dfrobot.com/wiki/index.php/HighTemperatureSensor_SKU:SEN0198
-//  SW3 - A2: Liquid Level Sensor         https://www.dfrobot.com/wiki/index.php/Liquid_Level_Sensor-FS-IR02_SKU:_SEN0205
-//  SW4 - A3: Dissolved Oxygen Sensor     https://www.dfrobot.com/wiki/index.php/Gravity:_Analog_Dissolved_Oxygen_Sensor_SKU:SEN0237
-//  SW5 - A4: Total Dissolved Solids      https://www.dfrobot.com/wiki/index.php/Gravity:_Analog_TDS_Sensor_/_Meter_For_Arduino_SKU:_SEN0244
-//  SW6 - A5: ...
+//  SW1 - A0: pH Sensor                     https://www.dfrobot.com/wiki/index.php/PH_meter(SKU:_SEN0161)
+//  SW2 - A1: High Temperature Sensor       https://www.dfrobot.com/wiki/index.php/HighTemperatureSensor_SKU:SEN0198
+//  SW3 - A2: Liquid Level Sensor           https://www.dfrobot.com/wiki/index.php/Liquid_Level_Sensor-FS-IR02_SKU:_SEN0205
+//  SW4 - A3: Dissolved Oxygen Sensor       https://www.dfrobot.com/wiki/index.php/Gravity:_Analog_Dissolved_Oxygen_Sensor_SKU:SEN0237
+//  SW5 - A4: Total Dissolved Solids        https://www.dfrobot.com/wiki/index.php/Gravity:_Analog_TDS_Sensor_/_Meter_For_Arduino_SKU:_SEN0244
+//  SW6 - A5: Oxydation Reduction Potetial  https://www.dfrobot.com/wiki/index.php/Analog_ORP_Meter(SKU:SEN0165)
 
 uint8_t dataSensor[15];
 
@@ -79,6 +79,17 @@ GravityTDS gravityTds;
 
 float temperatureTDS = 25,tdsValue = 0;
 
+//================== orp sensor =================
+#define VOLTAGE 5.00    //system voltage
+#define OFFSET 0        //zero drift voltage
+
+double orpValue;
+
+#define ArrayLenth  40    //times of collection
+#define orpPin A5          //orp meter output,connect to Arduino controller ADC pin
+
+int orpArray[ArrayLenth];
+int orpArrayIndex=0;
 
 /***************************************************
                       MAIN
@@ -106,6 +117,7 @@ void init_start(){
   init_liq();
   init_oxy();
   init_solids();
+  init_orp();
 }
 
 //================= pH sensor ===================
@@ -130,6 +142,10 @@ void init_solids(){
   gravityTds.setAref(5.0);  //reference voltage on ADC, default 5.0V on Arduino UNO
   gravityTds.setAdcRange(1024);  //1024 for 10bit ADC;4096 for 12bit ADC
   gravityTds.begin();  //initialization
+}
+//================== orp sensor =================
+void init_orp(){
+  //NOTHING TO DO
 }
 /***************************************************
                 FUNCTION GET DATA
@@ -176,19 +192,16 @@ void getdata(){
     dataSensor[10] = 0xFA;
   }
 
-  // if (checkPin(A5) == true) getdata_A5();
-  // else {
+  if (checkPin(orpPin) == true) getdata_orp();
+  else {
     dataSensor[11] = 0xFA;
     dataSensor[12] = 0xFA;
-  // }
-
+  }
 
 }
 
 //================= pH sensor ===================
 void getdata_ph(){
-  dataSensor[2] = 0;
-  dataSensor[1] = 0;
   static unsigned long samplingTime = millis();
   static unsigned long printTime = millis();
   static float pHValue,voltage;
@@ -316,6 +329,33 @@ void getdata_solids(){
     dataSensor[9] = Ttds/100;
   }
   delay(1000);
+}
+//================== orp sensor =================
+void getdata_orp(){
+  static unsigned long orpTimer=millis();   //analog sampling interval
+  static unsigned long printTime=millis();
+  if(millis() >= orpTimer)
+  {
+    orpTimer=millis()+20;
+    orpArray[orpArrayIndex++]=analogRead(orpPin);    //read an analog value every 20ms
+    if (orpArrayIndex==ArrayLenth) {
+      orpArrayIndex=0;
+    }   
+    orpValue=((30*(double)VOLTAGE*1000)-(75*avergearray(orpArray, ArrayLenth)*VOLTAGE*1000/1024))/75-OFFSET;  
+
+    //convert the analog value to orp according the circuit
+
+  }
+  if(millis() >= printTime)   //Every 800 milliseconds, print a numerical, convert the state of the LED indicator
+  {
+    printTime=millis()+800;
+    Serial.print("ORP: ");
+    Serial.print((int)orpValue + 2000);
+    Serial.println("mV");
+    int TorpValue = round(orpValue+2000);
+    dataSensor[12] = TorpValue%100;
+    dataSensor[11] = TorpValue/100;
+  }
 }
 /***************************************************
                     SUB-FUNCTION
