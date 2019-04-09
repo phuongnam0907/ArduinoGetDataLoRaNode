@@ -350,7 +350,7 @@ void getdata_orp(){
   {
     printTime=millis()+800;
     Serial.print("ORP: ");
-    Serial.print((int)orpValue + 2000);
+    Serial.print((int)orpValue);
     Serial.println("mV");
     int TorpValue = round(orpValue+2000);
     dataSensor[12] = TorpValue%100;
